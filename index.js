@@ -1,70 +1,15 @@
 
-import express, { Request, Response, NextFunction } from 'express';
-import mongoose, { Document, Schema } from 'mongoose';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import cors from 'cors';
-import path from 'path';
-import { body, validationResult } from 'express-validator';
-import rateLimit from 'express-rate-limit';
-import helmet from 'helmet';
+const express = require('express');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const cors = require('cors');
+const path = require('path');
+const { body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
 
 const app = express();
-
-// Interfaces
-interface IUser extends Document {
-  email: string;
-  password: string;
-  name: string;
-  role: 'user' | 'admin';
-  location?: {
-    address?: string;
-    latitude?: number;
-    longitude?: number;
-  };
-  phone?: string;
-  verified: boolean;
-}
-
-interface IItem extends Document {
-  name: string;
-  description: string;
-  category: string;
-  pricePerHour: number;
-  pricePerDay: number;
-  owner: mongoose.Types.ObjectId;
-  location: {
-    address: string;
-    latitude: number;
-    longitude: number;
-  };
-  images: string[];
-  available: boolean;
-  condition: 'new' | 'excellent' | 'good' | 'fair';
-}
-
-interface IRental extends Document {
-  item: mongoose.Types.ObjectId;
-  renter: mongoose.Types.ObjectId;
-  owner: mongoose.Types.ObjectId;
-  startDate: Date;
-  endDate: Date;
-  duration: {
-    hours?: number;
-    days?: number;
-  };
-  totalPrice: number;
-  status: 'pending' | 'confirmed' | 'active' | 'completed' | 'cancelled';
-  paymentStatus: 'pending' | 'paid' | 'refunded';
-}
-
-interface AuthRequest extends Request {
-  user?: {
-    userId: string;
-    email: string;
-    role: string;
-  };
-}
 
 // Middleware
 app.use(helmet());
@@ -80,11 +25,11 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 // MongoDB connection (using in-memory for demo - you can connect to MongoDB Atlas)
-const MONGODB_URI: string = process.env.MONGODB_URI || 'mongodb://localhost:27017/rental-app';
-const JWT_SECRET: string = process.env.JWT_SECRET || 'your-secret-key';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/rental-app';
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 // User Schema
-const userSchema = new Schema<IUser>({
+const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   name: { type: String, required: true },
@@ -98,16 +43,16 @@ const userSchema = new Schema<IUser>({
   verified: { type: Boolean, default: false }
 }, { timestamps: true });
 
-const User = mongoose.model<IUser>('User', userSchema);
+const User = mongoose.model('User', userSchema);
 
 // Item Schema
-const itemSchema = new Schema<IItem>({
+const itemSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String, required: true },
   category: { type: String, required: true },
   pricePerHour: { type: Number, required: true },
   pricePerDay: { type: Number, required: true },
-  owner: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   location: {
     address: { type: String, required: true },
     latitude: { type: Number, required: true },
@@ -118,13 +63,13 @@ const itemSchema = new Schema<IItem>({
   condition: { type: String, enum: ['new', 'excellent', 'good', 'fair'], default: 'good' }
 }, { timestamps: true });
 
-const Item = mongoose.model<IItem>('Item', itemSchema);
+const Item = mongoose.model('Item', itemSchema);
 
 // Rental Schema
-const rentalSchema = new Schema<IRental>({
-  item: { type: Schema.Types.ObjectId, ref: 'Item', required: true },
-  renter: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  owner: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+const rentalSchema = new mongoose.Schema({
+  item: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
+  renter: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   startDate: { type: Date, required: true },
   endDate: { type: Date, required: true },
   duration: {
@@ -136,22 +81,20 @@ const rentalSchema = new Schema<IRental>({
   paymentStatus: { type: String, enum: ['pending', 'paid', 'refunded'], default: 'pending' }
 }, { timestamps: true });
 
-const Rental = mongoose.model<IRental>('Rental', rentalSchema);
+const Rental = mongoose.model('Rental', rentalSchema);
 
 // Auth middleware
-const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction): void => {
+const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    res.status(401).json({ error: 'Access token required' });
-    return;
+    return res.status(401).json({ error: 'Access token required' });
   }
 
-  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+  jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) {
-      res.status(403).json({ error: 'Invalid token' });
-      return;
+      return res.status(403).json({ error: 'Invalid token' });
     }
     req.user = user;
     next();
@@ -159,10 +102,9 @@ const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction):
 };
 
 // Admin middleware
-const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction): void => {
-  if (req.user?.role !== 'admin') {
-    res.status(403).json({ error: 'Admin access required' });
-    return;
+const requireAdmin = (req, res, next) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
   }
   next();
 };
@@ -174,12 +116,11 @@ app.post('/api/register', [
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
   body('name').trim().isLength({ min: 1 })
-], async (req: Request, res: Response): Promise<void> => {
+], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      res.status(400).json({ errors: errors.array() });
-      return;
+      return res.status(400).json({ errors: errors.array() });
     }
 
     const { email, password, name, location, phone } = req.body;
@@ -187,8 +128,7 @@ app.post('/api/register', [
     // Check if user exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      res.status(400).json({ error: 'User already exists' });
-      return;
+      return res.status(400).json({ error: 'User already exists' });
     }
 
     // Hash password
@@ -222,7 +162,7 @@ app.post('/api/register', [
         role: user.role
       }
     });
-  } catch (error: any) {
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
@@ -231,12 +171,11 @@ app.post('/api/register', [
 app.post('/api/login', [
   body('email').isEmail().normalizeEmail(),
   body('password').exists()
-], async (req: Request, res: Response): Promise<void> => {
+], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      res.status(400).json({ errors: errors.array() });
-      return;
+      return res.status(400).json({ errors: errors.array() });
     }
 
     const { email, password } = req.body;
@@ -244,15 +183,13 @@ app.post('/api/login', [
     // Find user
     const user = await User.findOne({ email });
     if (!user) {
-      res.status(400).json({ error: 'Invalid credentials' });
-      return;
+      return res.status(400).json({ error: 'Invalid credentials' });
     }
 
     // Check password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      res.status(400).json({ error: 'Invalid credentials' });
-      return;
+      return res.status(400).json({ error: 'Invalid credentials' });
     }
 
     // Generate token
@@ -272,35 +209,35 @@ app.post('/api/login', [
         role: user.role
       }
     });
-  } catch (error: any) {
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Get items by location and category
-app.get('/api/items/search', async (req: Request, res: Response): Promise<void> => {
+app.get('/api/items/search', async (req, res) => {
   try {
     const { latitude, longitude, radius = 50, category, minPrice, maxPrice } = req.query;
 
-    let query: any = { available: true };
+    let query = { available: true };
 
     if (category) {
-      query.category = new RegExp(category as string, 'i');
+      query.category = new RegExp(category, 'i');
     }
 
     if (minPrice || maxPrice) {
       query.pricePerDay = {};
-      if (minPrice) query.pricePerDay.$gte = parseFloat(minPrice as string);
-      if (maxPrice) query.pricePerDay.$lte = parseFloat(maxPrice as string);
+      if (minPrice) query.pricePerDay.$gte = parseFloat(minPrice);
+      if (maxPrice) query.pricePerDay.$lte = parseFloat(maxPrice);
     }
 
     let items = await Item.find(query).populate('owner', 'name email phone');
 
     // Filter by location if coordinates provided
     if (latitude && longitude) {
-      const lat = parseFloat(latitude as string);
-      const lng = parseFloat(longitude as string);
-      const radiusKm = parseFloat(radius as string);
+      const lat = parseFloat(latitude);
+      const lng = parseFloat(longitude);
+      const radiusKm = parseFloat(radius);
 
       items = items.filter(item => {
         const distance = calculateDistance(lat, lng, item.location.latitude, item.location.longitude);
@@ -309,7 +246,7 @@ app.get('/api/items/search', async (req: Request, res: Response): Promise<void> 
     }
 
     res.json(items);
-  } catch (error: any) {
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
@@ -321,24 +258,23 @@ app.post('/api/items', authenticateToken, [
   body('category').trim().isLength({ min: 1 }),
   body('pricePerHour').isNumeric(),
   body('pricePerDay').isNumeric()
-], async (req: AuthRequest, res: Response): Promise<void> => {
+], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      res.status(400).json({ errors: errors.array() });
-      return;
+      return res.status(400).json({ errors: errors.array() });
     }
 
     const item = new Item({
       ...req.body,
-      owner: req.user?.userId
+      owner: req.user.userId
     });
 
     await item.save();
     await item.populate('owner', 'name email phone');
 
     res.status(201).json(item);
-  } catch (error: any) {
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
@@ -348,25 +284,23 @@ app.post('/api/rentals', authenticateToken, [
   body('itemId').isMongoId(),
   body('startDate').isISO8601(),
   body('endDate').isISO8601()
-], async (req: AuthRequest, res: Response): Promise<void> => {
+], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      res.status(400).json({ errors: errors.array() });
-      return;
+      return res.status(400).json({ errors: errors.array() });
     }
 
     const { itemId, startDate, endDate } = req.body;
 
     const item = await Item.findById(itemId);
     if (!item || !item.available) {
-      res.status(400).json({ error: 'Item not available' });
-      return;
+      return res.status(400).json({ error: 'Item not available' });
     }
 
     const start = new Date(startDate);
     const end = new Date(endDate);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffTime = Math.abs(end - start);
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     const diffHours = Math.ceil(diffTime / (1000 * 60 * 60));
 
@@ -376,7 +310,7 @@ app.post('/api/rentals', authenticateToken, [
 
     const rental = new Rental({
       item: itemId,
-      renter: req.user?.userId,
+      renter: req.user.userId,
       owner: item.owner,
       startDate: start,
       endDate: end,
@@ -391,59 +325,59 @@ app.post('/api/rentals', authenticateToken, [
     await rental.populate(['item', 'renter', 'owner']);
 
     res.status(201).json(rental);
-  } catch (error: any) {
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Get user's rentals
-app.get('/api/rentals/my', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
+app.get('/api/rentals/my', authenticateToken, async (req, res) => {
   try {
     const rentals = await Rental.find({
-      $or: [{ renter: req.user?.userId }, { owner: req.user?.userId }]
+      $or: [{ renter: req.user.userId }, { owner: req.user.userId }]
     }).populate(['item', 'renter', 'owner']);
 
     res.json(rentals);
-  } catch (error: any) {
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Admin routes
-app.get('/api/admin/users', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const users = await User.find({}).select('-password');
     res.json(users);
-  } catch (error: any) {
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.get('/api/admin/rentals', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+app.get('/api/admin/rentals', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const rentals = await Rental.find({}).populate(['item', 'renter', 'owner']);
     res.json(rentals);
-  } catch (error: any) {
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.get('/api/admin/items', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+app.get('/api/admin/items', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const items = await Item.find({}).populate('owner', 'name email');
     res.json(items);
-  } catch (error: any) {
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Serve frontend
-app.get('*', (req: Request, res: Response): void => {
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Helper function to calculate distance
-function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371; // Radius of the Earth in kilometers
   const dLat = deg2rad(lat2 - lat1);
   const dLon = deg2rad(lon2 - lon1);
@@ -456,7 +390,7 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return d;
 }
 
-function deg2rad(deg: number): number {
+function deg2rad(deg) {
   return deg * (Math.PI/180);
 }
 
