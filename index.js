@@ -371,8 +371,13 @@ app.get('/api/admin/items', authenticateToken, requireAdmin, async (req, res) =>
   }
 });
 
-// Serve frontend
-app.get('*', (req, res) => {
+// Serve frontend for non-API routes
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Catch-all route for frontend (excluding API routes)
+app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
