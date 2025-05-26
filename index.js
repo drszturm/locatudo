@@ -1,6 +1,7 @@
 
 const express = require('express');
-const mongoose = require('mongoose');
+const { DataSource } = require('typeorm');
+const { EntitySchema } = require('typeorm');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
@@ -8,6 +9,7 @@ const path = require('path');
 const { body, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
+require('reflect-metadata');
 
 const app = express();
 
@@ -24,64 +26,250 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// MongoDB connection (using in-memory for demo - you can connect to MongoDB Atlas)
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/rental-app';
+// PostgreSQL connection
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://user:password@localhost:5432/rental_app';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
-// User Schema
-const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  name: { type: String, required: true },
-  role: { type: String, enum: ['user', 'admin'], default: 'user' },
-  location: {
-    address: String,
-    latitude: Number,
-    longitude: Number
+// Entity Schemas
+const UserEntity = new EntitySchema({
+  name: 'User',
+  tableName: 'users',
+  columns: {
+    id: {
+      type: 'int',
+      primary: true,
+      generated: true
+    },
+    email: {
+      type: 'varchar',
+      unique: true,
+      nullable: false
+    },
+    password: {
+      type: 'varchar',
+      nullable: false
+    },
+    name: {
+      type: 'varchar',
+      nullable: false
+    },
+    role: {
+      type: 'enum',
+      enum: ['user', 'admin'],
+      default: 'user'
+    },
+    locationAddress: {
+      type: 'varchar',
+      nullable: true
+    },
+    locationLatitude: {
+      type: 'decimal',
+      precision: 10,
+      scale: 8,
+      nullable: true
+    },
+    locationLongitude: {
+      type: 'decimal',
+      precision: 11,
+      scale: 8,
+      nullable: true
+    },
+    phone: {
+      type: 'varchar',
+      nullable: true
+    },
+    verified: {
+      type: 'boolean',
+      default: false
+    },
+    createdAt: {
+      type: 'timestamp',
+      createDate: true
+    },
+    updatedAt: {
+      type: 'timestamp',
+      updateDate: true
+    }
+  }
+});
+
+const ItemEntity = new EntitySchema({
+  name: 'Item',
+  tableName: 'items',
+  columns: {
+    id: {
+      type: 'int',
+      primary: true,
+      generated: true
+    },
+    name: {
+      type: 'varchar',
+      nullable: false
+    },
+    description: {
+      type: 'text',
+      nullable: false
+    },
+    category: {
+      type: 'varchar',
+      nullable: false
+    },
+    pricePerHour: {
+      type: 'decimal',
+      precision: 10,
+      scale: 2,
+      nullable: false
+    },
+    pricePerDay: {
+      type: 'decimal',
+      precision: 10,
+      scale: 2,
+      nullable: false
+    },
+    ownerId: {
+      type: 'int',
+      nullable: false
+    },
+    locationAddress: {
+      type: 'varchar',
+      nullable: false
+    },
+    locationLatitude: {
+      type: 'decimal',
+      precision: 10,
+      scale: 8,
+      nullable: false
+    },
+    locationLongitude: {
+      type: 'decimal',
+      precision: 11,
+      scale: 8,
+      nullable: false
+    },
+    images: {
+      type: 'text',
+      array: true,
+      nullable: true
+    },
+    available: {
+      type: 'boolean',
+      default: true
+    },
+    condition: {
+      type: 'enum',
+      enum: ['new', 'excellent', 'good', 'fair'],
+      default: 'good'
+    },
+    createdAt: {
+      type: 'timestamp',
+      createDate: true
+    },
+    updatedAt: {
+      type: 'timestamp',
+      updateDate: true
+    }
   },
-  phone: String,
-  verified: { type: Boolean, default: false }
-}, { timestamps: true });
+  relations: {
+    owner: {
+      type: 'many-to-one',
+      target: 'User',
+      joinColumn: { name: 'ownerId' }
+    }
+  }
+});
 
-const User = mongoose.model('User', userSchema);
-
-// Item Schema
-const itemSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  description: { type: String, required: true },
-  category: { type: String, required: true },
-  pricePerHour: { type: Number, required: true },
-  pricePerDay: { type: Number, required: true },
-  owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  location: {
-    address: { type: String, required: true },
-    latitude: { type: Number, required: true },
-    longitude: { type: Number, required: true }
+const RentalEntity = new EntitySchema({
+  name: 'Rental',
+  tableName: 'rentals',
+  columns: {
+    id: {
+      type: 'int',
+      primary: true,
+      generated: true
+    },
+    itemId: {
+      type: 'int',
+      nullable: false
+    },
+    renterId: {
+      type: 'int',
+      nullable: false
+    },
+    ownerId: {
+      type: 'int',
+      nullable: false
+    },
+    startDate: {
+      type: 'timestamp',
+      nullable: false
+    },
+    endDate: {
+      type: 'timestamp',
+      nullable: false
+    },
+    durationHours: {
+      type: 'int',
+      nullable: true
+    },
+    durationDays: {
+      type: 'int',
+      nullable: true
+    },
+    totalPrice: {
+      type: 'decimal',
+      precision: 10,
+      scale: 2,
+      nullable: false
+    },
+    status: {
+      type: 'enum',
+      enum: ['pending', 'confirmed', 'active', 'completed', 'cancelled'],
+      default: 'pending'
+    },
+    paymentStatus: {
+      type: 'enum',
+      enum: ['pending', 'paid', 'refunded'],
+      default: 'pending'
+    },
+    createdAt: {
+      type: 'timestamp',
+      createDate: true
+    },
+    updatedAt: {
+      type: 'timestamp',
+      updateDate: true
+    }
   },
-  images: [String],
-  available: { type: Boolean, default: true },
-  condition: { type: String, enum: ['new', 'excellent', 'good', 'fair'], default: 'good' }
-}, { timestamps: true });
+  relations: {
+    item: {
+      type: 'many-to-one',
+      target: 'Item',
+      joinColumn: { name: 'itemId' }
+    },
+    renter: {
+      type: 'many-to-one',
+      target: 'User',
+      joinColumn: { name: 'renterId' }
+    },
+    owner: {
+      type: 'many-to-one',
+      target: 'User',
+      joinColumn: { name: 'ownerId' }
+    }
+  }
+});
 
-const Item = mongoose.model('Item', itemSchema);
+// Database connection
+const AppDataSource = new DataSource({
+  type: 'postgres',
+  url: DATABASE_URL,
+  entities: [UserEntity, ItemEntity, RentalEntity],
+  synchronize: true, // Set to false in production
+  logging: false
+});
 
-// Rental Schema
-const rentalSchema = new mongoose.Schema({
-  item: { type: mongoose.Schema.Types.ObjectId, ref: 'Item', required: true },
-  renter: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  startDate: { type: Date, required: true },
-  endDate: { type: Date, required: true },
-  duration: {
-    hours: Number,
-    days: Number
-  },
-  totalPrice: { type: Number, required: true },
-  status: { type: String, enum: ['pending', 'confirmed', 'active', 'completed', 'cancelled'], default: 'pending' },
-  paymentStatus: { type: String, enum: ['pending', 'paid', 'refunded'], default: 'pending' }
-}, { timestamps: true });
-
-const Rental = mongoose.model('Rental', rentalSchema);
+// Repository references
+let userRepository, itemRepository, rentalRepository;
 
 // Auth middleware
 const authenticateToken = (req, res, next) => {
@@ -126,7 +314,7 @@ app.post('/api/register', [
     const { email, password, name, location, phone } = req.body;
 
     // Check if user exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await userRepository.findOne({ where: { email } });
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
@@ -135,19 +323,21 @@ app.post('/api/register', [
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user
-    const user = new User({
+    const user = userRepository.create({
       email,
       password: hashedPassword,
       name,
-      location,
+      locationAddress: location?.address,
+      locationLatitude: location?.latitude,
+      locationLongitude: location?.longitude,
       phone
     });
 
-    await user.save();
+    await userRepository.save(user);
 
     // Generate token
     const token = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
+      { userId: user.id, email: user.email, role: user.role },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -156,7 +346,7 @@ app.post('/api/register', [
       message: 'User created successfully',
       token,
       user: {
-        id: user._id,
+        id: user.id,
         email: user.email,
         name: user.name,
         role: user.role
@@ -181,7 +371,7 @@ app.post('/api/login', [
     const { email, password } = req.body;
 
     // Find user
-    const user = await User.findOne({ email });
+    const user = await userRepository.findOne({ where: { email } });
     if (!user) {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
@@ -194,7 +384,7 @@ app.post('/api/login', [
 
     // Generate token
     const token = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
+      { userId: user.id, email: user.email, role: user.role },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -203,7 +393,7 @@ app.post('/api/login', [
       message: 'Login successful',
       token,
       user: {
-        id: user._id,
+        id: user.id,
         email: user.email,
         name: user.name,
         role: user.role
@@ -219,19 +409,23 @@ app.get('/api/items/search', async (req, res) => {
   try {
     const { latitude, longitude, radius = 50, category, minPrice, maxPrice } = req.query;
 
-    let query = { available: true };
+    let queryBuilder = itemRepository.createQueryBuilder('item')
+      .leftJoinAndSelect('item.owner', 'owner')
+      .where('item.available = :available', { available: true });
 
     if (category) {
-      query.category = new RegExp(category, 'i');
+      queryBuilder.andWhere('LOWER(item.category) LIKE LOWER(:category)', { category: `%${category}%` });
     }
 
-    if (minPrice || maxPrice) {
-      query.pricePerDay = {};
-      if (minPrice) query.pricePerDay.$gte = parseFloat(minPrice);
-      if (maxPrice) query.pricePerDay.$lte = parseFloat(maxPrice);
+    if (minPrice) {
+      queryBuilder.andWhere('item.pricePerDay >= :minPrice', { minPrice: parseFloat(minPrice) });
     }
 
-    let items = await Item.find(query).populate('owner', 'name email phone');
+    if (maxPrice) {
+      queryBuilder.andWhere('item.pricePerDay <= :maxPrice', { maxPrice: parseFloat(maxPrice) });
+    }
+
+    let items = await queryBuilder.getMany();
 
     // Filter by location if coordinates provided
     if (latitude && longitude) {
@@ -240,7 +434,7 @@ app.get('/api/items/search', async (req, res) => {
       const radiusKm = parseFloat(radius);
 
       items = items.filter(item => {
-        const distance = calculateDistance(lat, lng, item.location.latitude, item.location.longitude);
+        const distance = calculateDistance(lat, lng, parseFloat(item.locationLatitude), parseFloat(item.locationLongitude));
         return distance <= radiusKm;
       });
     }
@@ -265,15 +459,30 @@ app.post('/api/items', authenticateToken, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const item = new Item({
-      ...req.body,
-      owner: req.user.userId
+    const { name, description, category, pricePerHour, pricePerDay, location, images, condition } = req.body;
+
+    const item = itemRepository.create({
+      name,
+      description,
+      category,
+      pricePerHour,
+      pricePerDay,
+      ownerId: req.user.userId,
+      locationAddress: location.address,
+      locationLatitude: location.latitude,
+      locationLongitude: location.longitude,
+      images,
+      condition
     });
 
-    await item.save();
-    await item.populate('owner', 'name email phone');
+    await itemRepository.save(item);
+    
+    const savedItem = await itemRepository.findOne({
+      where: { id: item.id },
+      relations: ['owner']
+    });
 
-    res.status(201).json(item);
+    res.status(201).json(savedItem);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -281,7 +490,7 @@ app.post('/api/items', authenticateToken, [
 
 // Create rental request
 app.post('/api/rentals', authenticateToken, [
-  body('itemId').isMongoId(),
+  body('itemId').isNumeric(),
   body('startDate').isISO8601(),
   body('endDate').isISO8601()
 ], async (req, res) => {
@@ -293,7 +502,7 @@ app.post('/api/rentals', authenticateToken, [
 
     const { itemId, startDate, endDate } = req.body;
 
-    const item = await Item.findById(itemId);
+    const item = await itemRepository.findOne({ where: { id: itemId } });
     if (!item || !item.available) {
       return res.status(400).json({ error: 'Item not available' });
     }
@@ -305,26 +514,28 @@ app.post('/api/rentals', authenticateToken, [
     const diffHours = Math.ceil(diffTime / (1000 * 60 * 60));
 
     const totalPrice = diffDays >= 1 ? 
-      (diffDays * item.pricePerDay) : 
-      (diffHours * item.pricePerHour);
+      (diffDays * parseFloat(item.pricePerDay)) : 
+      (diffHours * parseFloat(item.pricePerHour));
 
-    const rental = new Rental({
-      item: itemId,
-      renter: req.user.userId,
-      owner: item.owner,
+    const rental = rentalRepository.create({
+      itemId: parseInt(itemId),
+      renterId: req.user.userId,
+      ownerId: item.ownerId,
       startDate: start,
       endDate: end,
-      duration: {
-        hours: diffHours,
-        days: diffDays
-      },
+      durationHours: diffHours,
+      durationDays: diffDays,
       totalPrice
     });
 
-    await rental.save();
-    await rental.populate(['item', 'renter', 'owner']);
+    await rentalRepository.save(rental);
+    
+    const savedRental = await rentalRepository.findOne({
+      where: { id: rental.id },
+      relations: ['item', 'renter', 'owner']
+    });
 
-    res.status(201).json(rental);
+    res.status(201).json(savedRental);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -333,9 +544,13 @@ app.post('/api/rentals', authenticateToken, [
 // Get user's rentals
 app.get('/api/rentals/my', authenticateToken, async (req, res) => {
   try {
-    const rentals = await Rental.find({
-      $or: [{ renter: req.user.userId }, { owner: req.user.userId }]
-    }).populate(['item', 'renter', 'owner']);
+    const rentals = await rentalRepository.find({
+      where: [
+        { renterId: req.user.userId },
+        { ownerId: req.user.userId }
+      ],
+      relations: ['item', 'renter', 'owner']
+    });
 
     res.json(rentals);
   } catch (error) {
@@ -346,7 +561,9 @@ app.get('/api/rentals/my', authenticateToken, async (req, res) => {
 // Admin routes
 app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const users = await User.find({}).select('-password');
+    const users = await userRepository.find({
+      select: ['id', 'email', 'name', 'role', 'locationAddress', 'phone', 'verified', 'createdAt', 'updatedAt']
+    });
     res.json(users);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -355,7 +572,9 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
 
 app.get('/api/admin/rentals', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const rentals = await Rental.find({}).populate(['item', 'renter', 'owner']);
+    const rentals = await rentalRepository.find({
+      relations: ['item', 'renter', 'owner']
+    });
     res.json(rentals);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -364,7 +583,9 @@ app.get('/api/admin/rentals', authenticateToken, requireAdmin, async (req, res) 
 
 app.get('/api/admin/items', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const items = await Item.find({}).populate('owner', 'name email');
+    const items = await itemRepository.find({
+      relations: ['owner']
+    });
     res.json(items);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -399,15 +620,21 @@ function deg2rad(deg) {
   return deg * (Math.PI/180);
 }
 
-// Connect to MongoDB and start server
-mongoose.connect(MONGODB_URI)
+// Connect to PostgreSQL and start server
+AppDataSource.initialize()
   .then(() => {
-    console.log('Connected to MongoDB');
+    console.log('Connected to PostgreSQL');
+    
+    // Initialize repositories
+    userRepository = AppDataSource.getRepository('User');
+    itemRepository = AppDataSource.getRepository('Item');
+    rentalRepository = AppDataSource.getRepository('Rental');
+    
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
     });
   })
   .catch(err => {
-    console.error('MongoDB connection error:', err);
+    console.error('PostgreSQL connection error:', err);
   });
